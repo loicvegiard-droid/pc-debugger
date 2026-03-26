@@ -1,0 +1,38 @@
+{
+  "name": "Node + UV Dev",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts",
+      "nodeGypDependencies": false
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12",
+      "installTools": false
+    }
+  },
+
+  "postCreateCommand": "curl -LsSf https://astral.sh/uv/install.sh | sh && echo 'source $HOME/.local/bin/env' >> ~/.bashrc",
+
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "editor.formatOnSave": true,
+        "python.defaultInterpreterPath": "/usr/local/bin/python",
+        "debug.openDebug": "openOnDebugBreak"
+      },
+      "extensions": [
+        "ms-python.python",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "dbaeumer.vscode-eslint",
+        "ms-vscode.js-debug-nightly",
+        "aaron-bond.better-comments"
+      ]
+    }
+  },
+
+  "forwardPorts": [],
+  "remoteUser": "vscode"
+}
