@@ -1,0 +1,85 @@
+name: Nightly Compact
+
+# Runs every night at 3am UTC.
+# Squashes all [auto] commits since the last [manual] or [restore] commit
+# into a single clean snapshot commit — keeps history readable.
+# Can also be triggered manually from GitHub Actions tab.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"   # 3:00 AM UTC every day
+  workflow_dispatch:        # manual trigger anytime
+
+permissions:
+  contents: write
+
+jobs:
+  compact:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history needed for squash
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config user.name  "pc-debugger bot"
+          git config user.email "loicvegiard-droid@users.noreply.github.com"
+
+      - name: Count auto-commits to squash
+        id: count
+        run: |
+          # Find the most recent non-[auto] commit
+          LAST_MANUAL=$(git log --oneline --format="%H %s" | \
+            grep -v "^\S* \[auto\]" | head -1 | awk '{print $1}')
+
+          if [ -z "$LAST_MANUAL" ]; then
+            echo "No manual commit found — nothing to compact."
+            echo "skip=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          COUNT=$(git log --oneline "$LAST_MANUAL"..HEAD | grep "\[auto\]" | wc -l | tr -d ' ')
+          echo "Found $COUNT [auto] commits since $LAST_MANUAL"
+          echo "count=$COUNT" >> $GITHUB_OUTPUT
+          echo "base=$LAST_MANUAL" >> $GITHUB_OUTPUT
+
+          if [ "$COUNT" -lt "2" ]; then
+            echo "Less than 2 auto-commits — nothing to compact."
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Squash auto-commits
+        if: steps.count.outputs.skip == 'false'
+        run: |
+          BASE="${{ steps.count.outputs.base }}"
+          COUNT="${{ steps.count.outputs.count }}"
+          DATE=$(date -u '+%Y-%m-%d')
+
+          # Soft reset to base — keeps all changes staged
+          git reset --soft "$BASE"
+
+          # Collect what changed
+          CHANGED=$(git diff --cached --name-only | head -20 | tr '\n' ', ' | sed 's/,$//')
+
+          # Create one clean snapshot commit
+          git commit -m "[snapshot] $DATE — compacted $COUNT auto-commits ($CHANGED)"
+          git push --force-with-lease
+
+          echo "Compacted $COUNT [auto] commits into 1 snapshot."
+
+      - name: Summary
+        run: |
+          echo "## Compact Result" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ steps.count.outputs.skip }}" == "true" ]; then
+            echo "Nothing to compact." >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Squashed **${{ steps.count.outputs.count }}** \`[auto]\` commits → 1 \`[snapshot]\`" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Latest 5 commits:" >> $GITHUB_STEP_SUMMARY
+          git log --oneline -5 >> $GITHUB_STEP_SUMMARY
